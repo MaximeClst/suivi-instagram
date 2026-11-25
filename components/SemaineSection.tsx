@@ -6,7 +6,7 @@ import { ReelCard } from "@/components/ReelsEssaiSection";
 import type { Id } from "@/convex/_generated/dataModel";
 import { dateCourte, plage } from "@/lib/format";
 import type { PublicationPatch, ReelEssaiPatch } from "@/lib/hooks/useMois";
-import { messages, suitLesMessages } from "@/lib/publications";
+import { messages, prevues, suitLesMessages } from "@/lib/publications";
 import { jourDeTournage, type SemaineAvecElements } from "@/lib/semaines";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +26,8 @@ export function SemaineSection({ groupe: { semaine, elements }, onChange, onRemo
   const publiees = publications.filter((p) => p.statut === "publie").length;
   const projet = publications.reduce((total, p) => total + messages(p), 0);
   const unite = suitLesMessages(publications) ? (projet > 1 ? "messages" : "message") : "PROJET";
-  const complete = publications.length > 0 && publiees === publications.length;
+  const aPublier = prevues(publications).length;
+  const complete = aPublier > 0 && publiees === aPublier;
   const reelsDiffuses = reels.filter((r) => r.statut !== "a-preparer").length;
   const titre = semaine ? `Semaine ${semaine.code.replace("S", "")}` : "Hors semaines";
 
@@ -41,7 +42,7 @@ export function SemaineSection({ groupe: { semaine, elements }, onChange, onRemo
               <span className="flex items-center gap-1.5 text-xs text-ink-500">
                 <Clapperboard size={13} />
                 Tournage {dateCourte(jourDeTournage(semaine))}
-                {semaine.tournage && ` · 2 h, les ${publications.length} publications`}
+                {semaine.tournage && ` · 2 h, les ${aPublier} publications`}
               </span>
             )}
           </div>
@@ -49,7 +50,7 @@ export function SemaineSection({ groupe: { semaine, elements }, onChange, onRemo
             {publications.length > 0 && (
               <>
                 <span className={cn(complete && "text-emerald-300")}>
-                  {publiees}/{publications.length} publiées
+                  {publiees}/{aPublier} publiées
                 </span>
                 <span className="text-ink-500"> · </span>
                 <span className={cn(projet > 0 && "text-accent")}>{projet} {unite}</span>

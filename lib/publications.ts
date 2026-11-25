@@ -2,6 +2,10 @@ import type { Doc } from "@/convex/_generated/dataModel";
 
 type P = Pick<Doc<"publications">, "resultats" | "resultatsB" | "projetRecus" | "vues48h">;
 
+/** Publications prévues : les reportées (en réserve) ne comptent pas dans « X / N publiées ». */
+export const prevues = <T extends Pick<Doc<"publications">, "statut">>(publications: T[]) =>
+  publications.filter((p) => p.statut !== "reporte");
+
 export const estReel = (p: Pick<Doc<"publications">, "format">) => /^reel/i.test(p.format);
 
 /** Messages reçus (décembre : A + B) ou PROJET (novembre). */

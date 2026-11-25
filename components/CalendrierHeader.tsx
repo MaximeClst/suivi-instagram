@@ -5,7 +5,7 @@ import { MessageSquareQuote } from "lucide-react";
 import { PageTitre } from "@/components/Champs";
 import { isoDuJour, jjmm, nombre } from "@/lib/format";
 import type { Publication } from "@/lib/hooks/useMois";
-import { messages, suitLesMessages, vues as vuesDe } from "@/lib/publications";
+import { messages, prevues, suitLesMessages, vues as vuesDe } from "@/lib/publications";
 import { cn } from "@/lib/utils";
 
 const SEGMENT: Record<Publication["statut"], string> = {
@@ -50,7 +50,7 @@ export function CalendrierHeader({ mois, publications }: { mois: string; publica
     <header className="space-y-5">
       <PageTitre surtitre={mois} titre="Calendrier">
         <div className="grid grid-cols-3 gap-2 md:w-[28rem] md:gap-3">
-          <Stat valeur={String(publiees)} total={String(publications.length)} label="publiées" />
+          <Stat valeur={String(publiees)} total={String(prevues(publications).length)} label="publiées" />
           <Stat valeur={String(projet)} label={parMessages ? "messages reçus" : "PROJET reçus"} accent={projet > 0} />
           <Stat valeur={nombre(vues)} label={parMessages ? "vues" : "vues à 48 h"} />
         </div>

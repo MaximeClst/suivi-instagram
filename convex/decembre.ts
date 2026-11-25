@@ -876,3 +876,99 @@ export const appliquerV5 = internalMutation({
     return `Décembre v5 : ${data.patches.length} publications modifiées, ${ajoutees} ajoutées, ${stories} story ajoutée`;
   },
 });
+
+/** Comparaison stable (ordre des clés ignoré) pour vérifier qu'un texte n'a pas bougé depuis le calcul des corrections. */
+const stable = (x: unknown): string =>
+  Array.isArray(x)
+    ? `[${x.map(stable).join(",")}]`
+    : x && typeof x === "object"
+      ? `{${Object.keys(x)
+          .sort()
+          .map((k) => `${JSON.stringify(k)}:${stable((x as Record<string, unknown>)[k])}`)
+          .join(",")}}`
+      : JSON.stringify(x);
+
+type CorrectionScript = { id: Id<"publications">; champ: string; avant: unknown; apres: unknown };
+type CorrectionStory = { id: Id<"stories">; champ: string; avant: unknown; apres: unknown };
+
+/**
+ * 25/11/2026 (4), Maxime : textes de décembre alignés sur `promesses.md` (formulations de l'offre, « Tu paies rien »,
+ * « pendant 1 an », « en 3 ou 4 fois sans frais », pas d'offre MAQUETTE dans les Reels à CTA NOTE, « Réponds MAQUETTE
+ * en message » dans les stories offre) et ligne TEST retirée de miniAudits. Données calculées hors du code.
+ * Chaque correction vérifie que le texte en base est encore celui d'avant : sinon rien n'est écrit. Relançable.
+ */
+export const appliquerV6 = internalMutation({
+  args: { data: v.any() },
+  handler: async (ctx, { data }) => {
+    const scripts = data.scripts as CorrectionScript[];
+    const stories = data.stories as CorrectionStory[];
+    const conflits: string[] = [];
+    const aFaire: (() => Promise<void>)[] = [];
+    let deja = 0;
+
+    const parPublication = new Map<Id<"publications">, CorrectionScript[]>();
+    for (const c of scripts) parPublication.set(c.id, [...(parPublication.get(c.id) ?? []), c]);
+    for (const [id, corrections] of parPublication) {
+      const p = await ctx.db.get(id);
+      if (!p?.script) {
+        conflits.push(`publication ${id} introuvable ou sans script`);
+        continue;
+      }
+      const script: Record<string, unknown> = { ...p.script };
+      let change = false;
+      for (const c of corrections) {
+        const actuel = stable(script[c.champ]);
+        if (actuel === stable(c.apres)) deja++;
+        else if (actuel === stable(c.avant)) {
+          script[c.champ] = c.apres;
+          change = true;
+        } else conflits.push(`${p.date} ${c.champ} modifié depuis`);
+      }
+      if (change) aFaire.push(() => ctx.db.patch(id, { script: script as Doc<"publications">["script"] }));
+    }
+
+    for (const c of stories) {
+      const s = await ctx.db.get(c.id);
+      if (!s) {
+        conflits.push(`story ${c.id} introuvable`);
+        continue;
+      }
+      const actuel = stable((s as Record<string, unknown>)[c.champ]);
+      if (actuel === stable(c.apres)) deja++;
+      else if (actuel === stable(c.avant)) aFaire.push(() => ctx.db.patch(c.id, { [c.champ]: c.apres }));
+      else conflits.push(`story ${s.date} ${c.champ} modifiée depuis`);
+    }
+
+    if (conflits.length) throw new Error(`Rien n'est écrit, textes modifiés depuis le calcul : ${conflits.join(" ; ")}`);
+    for (const f of aFaire) await f();
+
+    let audits = 0;
+    for (const id of data.miniAuditsSupprimes as Id<"miniAudits">[]) {
+      const a = await ctx.db.get(id);
+      if (a && a.prenom === "TEST") {
+        await ctx.db.delete(id);
+        audits++;
+      }
+    }
+    return `Décembre v6 : ${aFaire.length} publications ou stories corrigées, ${deja} déjà à jour, ${audits} ligne TEST retirée de miniAudits`;
+  },
+});
+
+/**
+ * 25/11/2026 (5), Maxime : les publications reportées de décembre ne sont plus gardées en réserve dans le site.
+ * Supprime les ids passés en argument (décembre seulement). Refuse si l'une a des résultats saisis. Relançable.
+ */
+export const supprimerReportees = internalMutation({
+  args: { ids: v.array(v.id("publications")) },
+  handler: async (ctx, { ids }) => {
+    const docs = (await Promise.all(ids.map((id) => ctx.db.get(id)))).filter((p) => p !== null);
+    const horsDecembre = docs.filter((p) => p.mois !== MOIS);
+    if (horsDecembre.length) throw new Error(`Hors décembre, rien n'est supprimé : ${horsDecembre.map((p) => p.date).join(", ")}`);
+    const remplies = docs.filter(
+      (p) => p.statut === "publie" || p.vues48h !== null || p.projetRecus !== null || Object.values(p.resultats ?? {}).some((x) => x !== null),
+    );
+    if (remplies.length) throw new Error(`Résultats déjà saisis, rien n'est supprimé : ${remplies.map((p) => p.date).join(", ")}`);
+    for (const p of docs) await ctx.db.delete(p._id);
+    return `Décembre : ${docs.length} publications supprimées (${docs.map((p) => `${p.date} ${p.accroche}`).join(" ; ")})`;
+  },
+});
